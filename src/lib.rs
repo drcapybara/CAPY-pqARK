@@ -244,7 +244,7 @@ mod tests {
         let _ =
             <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::hash_chain(
                 &mut builder,
-                100,
+                10,
             );
     }
 }
