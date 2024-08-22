@@ -23,7 +23,21 @@ use plonky2::{
 use std::error::Error;
 pub const KECCAK256_R: usize = 1088;
 
+#[allow(clippy::too_many_arguments)]
 pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F>> {
+    fn setup_recursive_layers(
+        &self,
+        builder: &mut CircuitBuilder<F, D>,
+        common_data: CommonCircuitData<F, D>,
+        initial_hash_target: HashOutTarget,
+        condition: BoolTarget,
+        current_hash_in: HashOutTarget,
+        one: plonky2::iop::target::Target,
+        counter: plonky2::iop::target::Target,
+    ) -> Result<ProofWithPublicInputsTarget<D>, Box<dyn Error>>
+    where
+        F: RichField + Extendable<D>,
+        C: GenericConfig<D, F = F> + 'static;
     fn verify(
         proof: ProofWithPublicInputs<F, C, D>,
         cyclic_circuit_data: CircuitData<F, C, D>,
@@ -38,7 +52,7 @@ pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConf
         verifier_data_target: VerifierCircuitTarget,
         cyclic_circuit_data: &CircuitData<F, C, D>,
     ) -> Result<ProofWithPublicInputs<F, C, D>, Box<dyn Error>>;
-    fn hash_chain(
+    fn build_hash_chain_circuit(
         &mut self,
         steps: usize,
     ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn std::error::Error>>;
@@ -60,19 +74,19 @@ where
 {
     // Implementation strategy:
     //
-    // +------------------+    +------------------+    +-----------------+
-    // | Initial Hash     |    | Current Hash     |    | Verifier Data   |
-    // | Target Gate      |──▶| Input Target     |──▶| Target Gate     |
-    // +------------------+    | (Updateable)     |    +-----------------+
+    // +------------------+    +------------------+    +-------------------+
+    // | 1. Initial Hash  |    | 2. Current Hash  |    | 3. Verifier Data  |
+    // | Target Gate      |──▶| Input Target     |──▶| Target Gate       |
+    // +------------------+    | (Updateable)     |    +-------------------+
     //          │              +------------------+            │
     //          │                   │    ▲                     │
     //          │                   │    │                     │
     //          │                   │    └───────┐             │
     //          │                   │            │             │
-    //          │             +-----------+      │             │
-    //          └───────────▶| Condition |      │             │
-    //                        | Check Gate|      │             │
-    //                        +-----------+      │             │
+    //          │             +--------------+   │             │
+    //          └───────────▶| 4. Condition |   │             │
+    //                        | Check Gate   |   │             │
+    //                        +--------------+   │             │
     //                                 │         ▼             ▼
     //                                 │   +------------------------+
     //                                 └─▶┤ Recursive Proof        |
@@ -99,7 +113,7 @@ where
     // Remark: This function is probably too big and could use some modularization.
     // Because it is so heavily parameterized over generics, this becomes difficult
     // when needing to pass around the builder between various functions.
-    fn hash_chain(
+    fn build_hash_chain_circuit(
         &mut self,
         steps: usize,
     ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn std::error::Error>>
@@ -139,34 +153,17 @@ where
         // Set a condition flag to determine if we are in the base case or not.
         let condition = builder.add_virtual_bool_target_safe();
 
-        // Next, setup the gate connections for the recursion cycles. We need to
-        // 1. Verify a previous proof (if one exists) and
-        // 2. connect the output of the current layer to the next layer
-        let inner_cyclic_proof_with_pub_inputs = builder.add_virtual_proof_with_pis(&common_data);
-        let inner_cyclic_pub_inputs = &inner_cyclic_proof_with_pub_inputs.public_inputs;
-        let inner_cyclic_initial_hash =
-            HashOutTarget::try_from(&inner_cyclic_pub_inputs[0..4]).unwrap();
-        let inner_cyclic_latest_hash =
-            HashOutTarget::try_from(&inner_cyclic_pub_inputs[4..8]).unwrap();
-        let inner_cyclic_counter = inner_cyclic_pub_inputs[8];
-
-        builder.connect_hashes(initial_hash_target, inner_cyclic_initial_hash);
-
-        let actual_hash_in =
-            builder.select_hash(condition, inner_cyclic_latest_hash, initial_hash_target);
-        builder.connect_hashes(current_hash_in, actual_hash_in);
-
-        // Update the counter if we are still in the recursion
-        let new_counter = builder.mul_add(condition.target, inner_cyclic_counter, one);
-        builder.connect(counter, new_counter);
-
-        // Setup the verification of the proof if we are not
-        // in the base case
-        builder.conditionally_verify_cyclic_proof_or_dummy::<C>(
-            condition,
-            &inner_cyclic_proof_with_pub_inputs,
-            &common_data,
-        )?;
+        let inner_cyclic_proof_with_pub_inputs =
+            <CircuitBuilder<F, D> as HashChain<F, D, C>>::setup_recursive_layers(
+                self,
+                &mut builder,
+                common_data.clone(),
+                initial_hash_target,
+                condition,
+                current_hash_in,
+                one,
+                counter,
+            )?;
 
         // We now have all of the appropriate layers setup, so
         // now lets compile the circuit.
@@ -181,6 +178,37 @@ where
             verifier_data_target,
             steps,
         )
+    }
+
+    fn setup_recursive_layers(
+        &self,
+        builder: &mut CircuitBuilder<F, D>,
+        common_data: CommonCircuitData<F, D>,
+        initial_hash_target: HashOutTarget,
+        condition: BoolTarget,
+        current_hash_in: HashOutTarget,
+        one: plonky2::iop::target::Target,
+        counter: plonky2::iop::target::Target,
+    ) -> Result<ProofWithPublicInputsTarget<D>, Box<dyn Error>> {
+        let inner_cyclic_proof_with_pub_inputs = builder.add_virtual_proof_with_pis(&common_data);
+        let inner_cyclic_pub_inputs = &inner_cyclic_proof_with_pub_inputs.public_inputs;
+        let inner_cyclic_initial_hash =
+            HashOutTarget::try_from(&inner_cyclic_pub_inputs[0..4]).unwrap();
+        let inner_cyclic_latest_hash =
+            HashOutTarget::try_from(&inner_cyclic_pub_inputs[4..8]).unwrap();
+        let inner_cyclic_counter = inner_cyclic_pub_inputs[8];
+        builder.connect_hashes(initial_hash_target, inner_cyclic_initial_hash);
+        let actual_hash_in =
+            builder.select_hash(condition, inner_cyclic_latest_hash, initial_hash_target);
+        builder.connect_hashes(current_hash_in, actual_hash_in);
+        let new_counter = builder.mul_add(condition.target, inner_cyclic_counter, one);
+        builder.connect(counter, new_counter);
+        builder.conditionally_verify_cyclic_proof_or_dummy::<C>(
+            condition,
+            &inner_cyclic_proof_with_pub_inputs,
+            &common_data,
+        )?;
+        Ok(inner_cyclic_proof_with_pub_inputs)
     }
 
     // Generates the common circuit data config for recursion, starting with the base case,
@@ -362,7 +390,7 @@ mod tests {
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config.clone());
         let (p, c) =
-            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::hash_chain(
+            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::build_hash_chain_circuit(
                 &mut builder,
                 10,
             )
