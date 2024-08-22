@@ -28,9 +28,6 @@ error[E0554]: `#![feature]` may not be used on the stable release channel
 
 Then please double check your toolchain. Otherwise, this repo should work out of the box.
 
-This branch performs cyclic poseidon hashes, while [this branch](https://github.com/drcapybara/hash-chain/tree/feat/keccak) (currently broken), performs cyclic keccak hashes. 
-
-
 # Strategy
 
 Our approach is to insert the following gates into the circuit with the requisite connections. It is not enough to create a circuit that simply connects each hash output the next input, the prover must argue the hash computation _and_ verify the preceeding hash in a single step, taking into account the recursive structure of the chain:
