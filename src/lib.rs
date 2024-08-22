@@ -7,7 +7,7 @@ use plonky2::{
         poseidon::{PoseidonHash, PoseidonPermutation},
     },
     iop::{
-        target::BoolTarget,
+        target::{BoolTarget, Target},
         witness::{PartialWitness, WitnessWrite},
     },
     plonk::{
@@ -20,51 +20,75 @@ use plonky2::{
         cyclic_recursion::check_cyclic_proof_verifier_data, dummy_circuit::cyclic_base_proof,
     },
 };
-use std::error::Error;
 pub const KECCAK256_R: usize = 1088;
+
+use anyhow::Error as AnyhowError;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+pub enum HashChainError {
+    #[error("{0}")]
+    AnyhowError(#[from] AnyhowError),
+}
+
+// Result type for operations that produce a target proof with public inputs
+// including an error handling mechanism specific to hash chain operations.
+type ProofTargetResult<const D: usize> = Result<ProofWithPublicInputsTarget<D>, HashChainError>;
+
+// Simplifies referencing the proof structure with generics, facilitating
+// easier usage within functions and trait methods across different configurations.
+type Proof<F, C, const D: usize> = ProofWithPublicInputs<F, C, D>;
+
+// Alias for circuit data that simplifies references to circuit structures within various methods
+type CircuitDataAlias<F, C, const D: usize> = CircuitData<F, C, D>;
+
+// Provides a simplified reference to common circuit data structures
+type CommonData<F, const D: usize> = CommonCircuitData<F, D>;
+
+// Tuple type that combines both proof and circuit data
+type ProofAndCircuit<F, C, const D: usize> = (Proof<F, C, D>, CircuitDataAlias<F, C, D>);
+
+// Result type for operations that either successfully return a combined proof
+// and circuit data or an error specific to hash chain processing.
+type ProofAndCircuitResult<F, C, const D: usize> = Result<ProofAndCircuit<F, C, D>, HashChainError>;
 
 #[allow(clippy::too_many_arguments)]
 pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F>> {
+    fn build_hash_chain_circuit(&mut self, steps: usize) -> ProofAndCircuitResult<F, C, D>;
     fn setup_recursive_layers(
         &self,
         builder: &mut CircuitBuilder<F, D>,
-        common_data: CommonCircuitData<F, D>,
+        common_data: CommonData<F, D>,
         initial_hash_target: HashOutTarget,
         condition: BoolTarget,
         current_hash_in: HashOutTarget,
-        one: plonky2::iop::target::Target,
-        counter: plonky2::iop::target::Target,
-    ) -> Result<ProofWithPublicInputsTarget<D>, Box<dyn Error>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F> + 'static;
+        one: Target,
+        counter: Target,
+    ) -> ProofTargetResult<D>;
+
     fn verify(
-        proof: ProofWithPublicInputs<F, C, D>,
-        cyclic_circuit_data: CircuitData<F, C, D>,
-    ) -> Result<(), Box<dyn Error>>
-    where
-        F: RichField + Extendable<D>,
-        C: GenericConfig<D, F = F> + 'static;
+        proof: Proof<F, C, D>,
+        cyclic_circuit_data: CircuitDataAlias<F, C, D>,
+    ) -> Result<(), HashChainError>;
+
     fn check_cyclic_proof_layer(
         condition: BoolTarget,
         inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
-        proof: ProofWithPublicInputs<F, C, D>,
+        proof: Proof<F, C, D>,
         verifier_data_target: VerifierCircuitTarget,
-        cyclic_circuit_data: &CircuitData<F, C, D>,
-    ) -> Result<ProofWithPublicInputs<F, C, D>, Box<dyn Error>>;
-    fn build_hash_chain_circuit(
-        &mut self,
-        steps: usize,
-    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn std::error::Error>>;
-    fn common_data_for_recursion() -> CommonCircuitData<F, D>;
+        cyclic_circuit_data: &CircuitDataAlias<F, C, D>,
+    ) -> Result<Proof<F, C, D>, HashChainError>;
+
+    fn common_data_for_recursion() -> CommonData<F, D>;
+
     fn process_recursive_layer(
         condition: BoolTarget,
         inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
-        common_data: CommonCircuitData<F, D>,
-        cyclic_circuit_data: CircuitData<F, C, D>,
+        common_data: CommonData<F, D>,
+        cyclic_circuit_data: CircuitDataAlias<F, C, D>,
         verifier_data_target: VerifierCircuitTarget,
         steps: usize,
-    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn Error>>;
+    ) -> ProofAndCircuitResult<F, C, D>;
 }
 
 impl<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F> + 'static>
@@ -72,52 +96,85 @@ impl<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F> + 
 where
     <C as GenericConfig<D>>::Hasher: AlgebraicHasher<F>,
 {
-    // Implementation strategy:
-    //
-    // +------------------+    +------------------+    +-------------------+
-    // | 1. Initial Hash  |    | 2. Current Hash  |    | 3. Verifier Data  |
-    // | Target Gate      |──▶| Input Target     |──▶| Target Gate       |
-    // +------------------+    | (Updateable)     |    +-------------------+
-    //          │              +------------------+            │
-    //          │                   │    ▲                     │
-    //          │                   │    │                     │
-    //          │                   │    └───────┐             │
-    //          │                   │            │             │
-    //          │             +--------------+   │             │
-    //          └───────────▶| 4. Condition |   │             │
-    //                        | Check Gate   |   │             │
-    //                        +--------------+   │             │
-    //                                 │         ▼             ▼
-    //                                 │   +------------------------+
-    //                                 └─▶┤ Recursive Proof        |
-    //                                     | Integration & Loop     |
-    //                                     +------------------------+
-    //                                             │           ▲
-    //                                             │           │
-    //                                             │           │
-    //                                             ▼           │
-    //                                     +---------------+   │
-    //                                     | Step Counter  |───┘
-    //                                     | & Loop Check  |
-    //                                     +---------------+
-    //                                             │
-    //                                             ▼
-    //                                     +---------------+
-    //                                     | Finalize Hash |
-    //                                     | & Verification|
-    //                                     +---------------+
-    //
-    // Following this approach, we can build a properly constrained recursive hash chain
-    // circuit.
-    //
-    // Remark: This function is probably too big and could use some modularization.
-    // Because it is so heavily parameterized over generics, this becomes difficult
-    // when needing to pass around the builder between various functions.
+    /// Implementation strategy:
+    ///
+    /// ```ignore
+    /// +------------------+    +------------------+    +-------------------+
+    /// | 1. Initial Hash  |    | 2. Current Hash  |    | 3. Verifier Data  |
+    /// | Target Gate      |──▶| Input Target     |──▶| Target Gate       |
+    /// +------------------+    | (Updateable)     |    +-------------------+
+    ///          │              +------------------+            │
+    ///          │                   │    ▲                     │
+    ///          │                   │    │                     │
+    ///          │                   │    └───────┐             │
+    ///          │                   │            │             │
+    ///          │             +--------------+   │             │
+    ///          └───────────▶| 4. Condition |   │             │
+    ///                        | Check Gate   |   │             │
+    ///                        +--------------+   │             │
+    ///                                 │         ▼             ▼
+    ///                                 │   +------------------------+
+    ///                                 └─▶┤ Recursive Proof        |
+    ///                                     | Integration & Loop     |
+    ///                                     +------------------------+
+    ///                                             │           ▲
+    ///                                             │           │
+    ///                                             │           │
+    ///                                             ▼           │
+    ///                                     +---------------+   │
+    ///                                     | Step Counter  |───┘
+    ///                                     | & Loop Check  |
+    ///                                     +---------------+
+    ///                                             │
+    ///                                             ▼
+    ///                                     +---------------+
+    ///                                     | Finalize Hash |
+    ///                                     | & Verification|
+    ///                                     +---------------+
+    /// ```
+    /// Following this approach, we can build a properly constrained recursive hash chain
+    /// circuit.
+    ///
+    /// ## Usage
+    /// ```
+    /// use hash_chain::HashChain;
+    /// use plonky2::{
+    ///     field::goldilocks_field::GoldilocksField,
+    ///     plonk::{
+    ///         circuit_builder::CircuitBuilder,
+    ///         circuit_data::CircuitConfig,
+    ///         config::{GenericConfig, PoseidonGoldilocksConfig},
+    ///     },
+    /// };
+    ///
+    /// const D: usize = 2;
+    /// type C = PoseidonGoldilocksConfig; // A config with poseidon as the hasher for FRI
+    /// type F = <C as GenericConfig<D>>::F;
+    ///
+    /// let config = CircuitConfig::standard_recursion_config(); // a non-ZK config, commitments and proof may reveal input data
+    /// let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
+    ///
+    /// // Prove
+    /// let (proof, circuit_data) =
+    ///     <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::build_hash_chain_circuit(
+    ///         &mut circuit,
+    ///         2, // number of steps in the hash chain
+    ///     )
+    ///     .unwrap();
+    ///
+    /// // Verify
+    /// let verification_result =
+    ///     <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(proof, circuit_data);
+    /// assert!(verification_result.is_ok());
+    /// ```
+    ///
+    /// Remark: This function is probably too big and could use some modularization.
+    /// Because it is so heavily parameterized over generics, refactoring becomes difficult
+    /// when needing to pass around the builder between various functions (which we probably shouldnt be doing).
     fn build_hash_chain_circuit(
         &mut self,
         steps: usize,
-    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn std::error::Error>>
-    {
+    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), HashChainError> {
         let config = CircuitConfig::standard_recursion_config();
 
         // Setup the builder for the cyclic circuit. We will proceed to add the necessary
@@ -180,6 +237,9 @@ where
         )
     }
 
+    // Setup the recursive hashes structure by establishing the size of the inputs and outputs
+    // and connecting them to each other appropriately. Additionally setup the conditional proof
+    // verification depending on whether we are in the base layer or not.
     fn setup_recursive_layers(
         &self,
         builder: &mut CircuitBuilder<F, D>,
@@ -187,15 +247,13 @@ where
         initial_hash_target: HashOutTarget,
         condition: BoolTarget,
         current_hash_in: HashOutTarget,
-        one: plonky2::iop::target::Target,
-        counter: plonky2::iop::target::Target,
-    ) -> Result<ProofWithPublicInputsTarget<D>, Box<dyn Error>> {
+        one: Target,
+        counter: Target,
+    ) -> Result<ProofWithPublicInputsTarget<D>, HashChainError> {
         let inner_cyclic_proof_with_pub_inputs = builder.add_virtual_proof_with_pis(&common_data);
         let inner_cyclic_pub_inputs = &inner_cyclic_proof_with_pub_inputs.public_inputs;
-        let inner_cyclic_initial_hash =
-            HashOutTarget::try_from(&inner_cyclic_pub_inputs[0..4]).unwrap();
-        let inner_cyclic_latest_hash =
-            HashOutTarget::try_from(&inner_cyclic_pub_inputs[4..8]).unwrap();
+        let inner_cyclic_initial_hash = HashOutTarget::try_from(&inner_cyclic_pub_inputs[0..4])?;
+        let inner_cyclic_latest_hash = HashOutTarget::try_from(&inner_cyclic_pub_inputs[4..8])?;
         let inner_cyclic_counter = inner_cyclic_pub_inputs[8];
         builder.connect_hashes(initial_hash_target, inner_cyclic_initial_hash);
         let actual_hash_in =
@@ -249,7 +307,7 @@ where
         proof: ProofWithPublicInputs<F, C, D>,
         verifier_data_target: VerifierCircuitTarget,
         cyclic_circuit_data: &CircuitData<F, C, D>,
-    ) -> Result<ProofWithPublicInputs<F, C, D>, Box<dyn Error>> {
+    ) -> Result<ProofWithPublicInputs<F, C, D>, HashChainError> {
         let mut pw = PartialWitness::new();
         pw.set_bool_target(condition, true);
         pw.set_proof_with_pis_target(&inner_cyclic_proof_with_pub_inputs, &proof);
@@ -271,7 +329,7 @@ where
         cyclic_circuit_data: CircuitData<F, C, D>,
         verifier_data_target: VerifierCircuitTarget,
         steps: usize,
-    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn Error>> {
+    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), HashChainError> {
         // Setup the partial witness for the proof, and set the
         // initial public input wires with an array of field elements set to
         // the empty hash
@@ -331,7 +389,7 @@ where
     fn verify(
         proof: ProofWithPublicInputs<F, C, D>,
         cyclic_circuit_data: CircuitData<F, C, D>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), HashChainError> {
         // Use the given hash permutation from plonky2 to verify
         // that the repeated hash is computed correctly.
         let initial_hash = &proof.public_inputs[..4];
@@ -388,10 +446,10 @@ mod tests {
         type F = <C as GenericConfig<D>>::F;
 
         let config = CircuitConfig::standard_recursion_config();
-        let mut builder = CircuitBuilder::<F, D>::new(config.clone());
+        let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
         let (p, c) =
             <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::build_hash_chain_circuit(
-                &mut builder,
+                &mut circuit,
                 10,
             )
             .unwrap();
