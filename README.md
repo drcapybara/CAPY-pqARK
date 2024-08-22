@@ -130,4 +130,4 @@ TODO
 - [ ] Compress the proof at the end
 - [ ] support keccak
 - [ ] add benches
-- [x]better error handling with thiserr
+- [x] better error handling with thiserr
