@@ -2,6 +2,9 @@
 
 Have you ever been sitting behind your desk one evening and thought to yourself, "Gee whiz, I sure wish I could cryptographically prove in quantum-resistant zero knowledge that I computed a gigantic chain of hashes correctly"? Well _good news_ because this repo will fill that burning hole in your heart with a plonky2-based implementation of a recursive computation chain that proves a series of hashes a la IVC style and outputs a compressed proof of constant size, arguing the integrity of a potentially unlimited size computation.
 
+This branch performs cyclic poseidon hashes, while [this branch](https://github.com/drcapybara/hash-chain/tree/feat/keccak) currently broken, performs cyclic keccak hashes. 
+
+
 # Strategy
 
 Our approach is to insert the following gates into the circuit with the requisite connections. It is not enough to create a circuit that simply connects each hash output the next input, the prover must argue the hash computation _and_ verify the preceeding hash in a single step, taking into account the recursive structure of the chain:
