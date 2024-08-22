@@ -20,6 +20,7 @@ use plonky2::{
         cyclic_recursion::check_cyclic_proof_verifier_data, dummy_circuit::cyclic_base_proof,
     },
 };
+use std::array::TryFromSliceError;
 pub const KECCAK256_R: usize = 1088;
 
 use anyhow::Error as AnyhowError;
@@ -29,6 +30,8 @@ use thiserror::Error;
 pub enum HashChainError {
     #[error("{0}")]
     AnyhowError(#[from] AnyhowError),
+    #[error("Failed to convert slice: {0}")]
+    SliceConversionError(#[from] TryFromSliceError),
 }
 
 // Result type for operations that produce a target proof with public inputs
@@ -39,14 +42,15 @@ type ProofTargetResult<const D: usize> = Result<ProofWithPublicInputsTarget<D>, 
 // easier usage within functions and trait methods across different configurations.
 type Proof<F, C, const D: usize> = ProofWithPublicInputs<F, C, D>;
 
-// Alias for circuit data that simplifies references to circuit structures within various methods
-type CircuitDataAlias<F, C, const D: usize> = CircuitData<F, C, D>;
+// Alias for circuit data that simplifies references to circuit structures within various methods.
+// It describes the circuit to be proven and can be used during verification.
+type CircuitMap<F, C, const D: usize> = CircuitData<F, C, D>;
 
 // Provides a simplified reference to common circuit data structures
 type CommonData<F, const D: usize> = CommonCircuitData<F, D>;
 
 // Tuple type that combines both proof and circuit data
-type ProofAndCircuit<F, C, const D: usize> = (Proof<F, C, D>, CircuitDataAlias<F, C, D>);
+type ProofAndCircuit<F, C, const D: usize> = (Proof<F, C, D>, CircuitMap<F, C, D>);
 
 // Result type for operations that either successfully return a combined proof
 // and circuit data or an error specific to hash chain processing.
@@ -68,7 +72,7 @@ pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConf
 
     fn verify(
         proof: Proof<F, C, D>,
-        cyclic_circuit_data: CircuitDataAlias<F, C, D>,
+        cyclic_circuit_data: CircuitMap<F, C, D>,
     ) -> Result<(), HashChainError>;
 
     fn check_cyclic_proof_layer(
@@ -76,7 +80,7 @@ pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConf
         inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
         proof: Proof<F, C, D>,
         verifier_data_target: VerifierCircuitTarget,
-        cyclic_circuit_data: &CircuitDataAlias<F, C, D>,
+        cyclic_circuit_data: &CircuitMap<F, C, D>,
     ) -> Result<Proof<F, C, D>, HashChainError>;
 
     fn common_data_for_recursion() -> CommonData<F, D>;
@@ -85,7 +89,7 @@ pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConf
         condition: BoolTarget,
         inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
         common_data: CommonData<F, D>,
-        cyclic_circuit_data: CircuitDataAlias<F, C, D>,
+        cyclic_circuit_data: CircuitMap<F, C, D>,
         verifier_data_target: VerifierCircuitTarget,
         steps: usize,
     ) -> ProofAndCircuitResult<F, C, D>;
@@ -98,42 +102,47 @@ where
 {
     /// Implementation strategy:
     ///
-    /// ```ignore
-    /// +------------------+    +------------------+    +-------------------+
-    /// | 1. Initial Hash  |    | 2. Current Hash  |    | 3. Verifier Data  |
-    /// | Target Gate      |──▶| Input Target     |──▶| Target Gate       |
-    /// +------------------+    | (Updateable)     |    +-------------------+
-    ///          │              +------------------+            │
-    ///          │                   │    ▲                     │
-    ///          │                   │    │                     │
-    ///          │                   │    └───────┐             │
-    ///          │                   │            │             │
-    ///          │             +--------------+   │             │
-    ///          └───────────▶| 4. Condition |   │             │
-    ///                        | Check Gate   |   │             │
-    ///                        +--------------+   │             │
-    ///                                 │         ▼             ▼
-    ///                                 │   +------------------------+
-    ///                                 └─▶┤ Recursive Proof        |
-    ///                                     | Integration & Loop     |
-    ///                                     +------------------------+
-    ///                                             │           ▲
-    ///                                             │           │
-    ///                                             │           │
-    ///                                             ▼           │
-    ///                                     +---------------+   │
-    ///                                     | Step Counter  |───┘
-    ///                                     | & Loop Check  |
-    ///                                     +---------------+
-    ///                                             │
-    ///                                             ▼
-    ///                                     +---------------+
-    ///                                     | Finalize Hash |
-    ///                                     | & Verification|
-    ///                                     +---------------+
+    /// ```text
+    /// +--------------------------------+    +--------------------------------+    +------------------------------+
+    /// | 1. initialize_circuit_builder  |    | 2. setup_hashes                |    | 3. common_data_for_recursion |
+    /// |    Set up the circuit builder  |──▶| Configure initial and current  |──▶| Set up data for recursion    |
+    /// |    and configuration.          |    | hash targets and register      |    | and verifier data inputs.    |
+    /// +--------------------------------+    | them as public inputs.         |    +------------------------------+
+    ///           |                           +--------------------------------+        |
+    ///           │                               ▲                                     │
+    ///           │                               │                                     │
+    ///           │                               └──────────┐                          │
+    ///           │                                          │                          │
+    ///           │            +--------------------+        │                          │
+    ///           └─────────▶ | 4. setup_condition |        │                          │
+    ///                        |  Set condition for |        │                          │
+    ///                        |  recursion base.   |        │                          │
+    ///                        +--------------------+        │                          │
+    ///                                  │                   │                          ▼
+    ///                                  │            +--------------------------------------+      
+    ///                                  └──────────▶|       5. setup_recursive_layers      |
+    ///                                               |        Configure recursive layers    |
+    ///                                               |        and integrate proof.          |
+    ///                                               +--------------------------------------+
+    ///                                                     │                      ▲
+    ///                                                     │                      │
+    ///                                                     │                      │
+    ///                                                     ▼                      │
+    ///                                           +-----------------------------+  │
+    ///                                           | 6. process_recursive_layer  |──┘
+    ///                                           |  Handle recursion, verify,  |
+    ///                                           |  and loop through steps.    |
+    ///                                           +-----------------------------+
+    ///                                                     │
+    ///                                                     ▼
+    ///                                           +-------------------------+
+    ///                                           | 7. compile_and_process  |
+    ///                                           |  Finalize circuit and   |
+    ///                                           |  handle processing.     |
+    ///                                           +-------------------------+
     /// ```
     /// Following this approach, we can build a properly constrained recursive hash chain
-    /// circuit.
+    /// circuit. (At least thats the plan!)
     ///
     /// ## Usage
     /// ```
@@ -402,7 +411,7 @@ where
         // is correct, this is merely done to validate
         // the circuit output.
         let expected_hash: [F; 4] = iterate_hash(
-            initial_hash.try_into().unwrap(),
+            initial_hash.try_into()?,
             counter.to_canonical_u64() as usize,
         );
         assert_eq!(hash, expected_hash);
@@ -447,15 +456,18 @@ mod tests {
 
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
-        let (p, c) =
-            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::build_hash_chain_circuit(
-                &mut circuit,
-                10,
-            )
-            .unwrap();
+        let (proof, circuit_map) = <CircuitBuilder<GoldilocksField, 2> as HashChain<
+            GoldilocksField,
+            2,
+            C,
+        >>::build_hash_chain_circuit(&mut circuit, 10)
+        .unwrap();
 
         let result =
-            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::verify(p, c);
+            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::verify(
+                proof,
+                circuit_map,
+            );
         assert!(result.is_ok())
     }
 }
