@@ -37,30 +37,30 @@ Our approach is to insert the following gates into the circuit with the requisit
 | Initial Hash     |    | Current Hash     |    | Verifier Data   |
 | Target Gate      |──▶| Input Target     |──▶| Target Gate     |
 +------------------+    | (Updateable)     |    +-----------------+
-         │              +------------------+            │
-         │                   │    ▲                     │
-         │                   │    │                     │
-         │                   │    └───────┐             │
-         │                   │            │             │
-         │             +-----------+      │             │
-         └───────────▶| Condition |      │             │
-                       | Check Gate|      │             │
-                       +-----------+      │             │
-                                │         │             │
+            │              +------------------+            │
+            │                   │    ▲                     │
+            │                   │    │                     │
+            │                   │    └───────┐             │
+            │                   │            │             │
+            │             +-----------+      │             │
+            └───────────▶| Condition |      │             │
+                        | Check Gate|      │             │
+                        +-----------+      │             │
+                                │         ▼             ▼
                                 │   +------------------------+
-                                └───┤ Recursive Proof        |
+                                └─▶┤ Recursive Proof        |
                                     | Integration & Loop     |
                                     +------------------------+
                                             │           ▲
                                             │           │
                                             │           │
-                                            │           │
+                                            ▼           │
                                     +---------------+   │
                                     | Step Counter  |───┘
                                     | & Loop Check  |
                                     +---------------+
                                             │
-                                            │
+                                            ▼
                                     +---------------+
                                     | Finalize Hash |
                                     | & Verification|
