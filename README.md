@@ -4,7 +4,7 @@ Have you ever been sitting behind your desk one evening and thought to yourself,
 
 ## Quick start:
 
-You can download the repo and run the main brain successfully with:
+You can download the repo and run the main branch with:
 ```bash
 cargo test
 ```
