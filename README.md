@@ -33,38 +33,38 @@ Then please double check your toolchain. Otherwise, this repo should work out of
 Our approach is to insert the following gates into the circuit with the requisite connections. It is not enough to create a circuit that simply connects each hash output the next input, the prover must argue the hash computation _and_ verify the preceeding hash in a single step, taking into account the recursive structure of the chain:
 
 ```
-+------------------+    +------------------+    +-----------------+
-| Initial Hash     |    | Current Hash     |    | Verifier Data   |
-| Target Gate      |──▶| Input Target     |──▶| Target Gate     |
-+------------------+    | (Updateable)     |    +-----------------+
-            │              +------------------+            │
-            │                   │    ▲                     │
-            │                   │    │                     │
-            │                   │    └───────┐             │
-            │                   │            │             │
-            │             +-----------+      │             │
-            └───────────▶| Condition |      │             │
-                        | Check Gate|      │             │
-                        +-----------+      │             │
-                                │         ▼             ▼
-                                │   +------------------------+
-                                └─▶┤ Recursive Proof        |
-                                    | Integration & Loop     |
-                                    +------------------------+
-                                            │           ▲
-                                            │           │
-                                            │           │
-                                            ▼           │
-                                    +---------------+   │
-                                    | Step Counter  |───┘
-                                    | & Loop Check  |
-                                    +---------------+
-                                            │
-                                            ▼
-                                    +---------------+
-                                    | Finalize Hash |
-                                    | & Verification|
-                                    +---------------+
+    +------------------+    +------------------+    +-----------------+
+    | Initial Hash     |    | Current Hash     |    | Verifier Data   |
+    | Target Gate      |──▶| Input Target     |──▶| Target Gate     |
+    +------------------+    | (Updateable)     |    +-----------------+
+             │              +------------------+            │
+             │                   │    ▲                     │
+             │                   │    │                     │
+             │                   │    └───────┐             │
+             │                   │            │             │
+             │             +-----------+      │             │
+             └───────────▶| Condition |      │             │
+                           | Check Gate|      │             │
+                           +-----------+      │             │
+                                    │         ▼             ▼
+                                    │   +------------------------+
+                                    └─▶┤ Recursive Proof        |
+                                        | Integration & Loop     |
+                                        +------------------------+
+                                                │           ▲
+                                                │           │
+                                                │           │
+                                                ▼           │
+                                        +---------------+   │
+                                        | Step Counter  |───┘
+                                        | & Loop Check  |
+                                        +---------------+
+                                                │
+                                                ▼
+                                        +---------------+
+                                        | Finalize Hash |
+                                        | & Verification|
+                                        +---------------+
 ```
 
 ### Initial Setup
