@@ -32,39 +32,44 @@ Then please double check your toolchain. Otherwise, this repo should work out of
 
 Our approach is to insert the following gates into the circuit with the requisite connections. It is not enough to create a circuit that simply connects each hash output the next input, the prover must argue the hash computation _and_ verify the preceeding hash in a single step, taking into account the recursive structure of the chain:
 
-```
-    +------------------+    +------------------+    +-----------------+
-    | Initial Hash     |    | Current Hash     |    | Verifier Data   |
-    | Target Gate      |──▶| Input Target     |──▶| Target Gate     |
-    +------------------+    | (Updateable)     |    +-----------------+
-             │              +------------------+            │
-             │                   │    ▲                     │
-             │                   │    │                     │
-             │                   │    └───────┐             │
-             │                   │            │             │
-             │             +-----------+      │             │
-             └───────────▶| Condition |      │             │
-                           | Check Gate|      │             │
-                           +-----------+      │             │
-                                    │         ▼             ▼
-                                    │   +------------------------+
-                                    └─▶┤ Recursive Proof        |
-                                        | Integration & Loop     |
-                                        +------------------------+
-                                                │           ▲
-                                                │           │
-                                                │           │
-                                                ▼           │
-                                        +---------------+   │
-                                        | Step Counter  |───┘
-                                        | & Loop Check  |
-                                        +---------------+
-                                                │
-                                                ▼
-                                        +---------------+
-                                        | Finalize Hash |
-                                        | & Verification|
-                                        +---------------+
+```text
++--------------------------------+    +--------------------------------+    +------------------------------+
+| 1. initialize_circuit_builder  |    | 2. setup_hashes                |    | 3. common_data_for_recursion |
+|    Set up the circuit builder  |──▶| Configure initial and current  |──▶| Set up data for recursion    |
+|    and configuration.          |    | hash targets and register      |    | and verifier data inputs.    |
++--------------------------------+    | them as public inputs.         |    +------------------------------+
+          |                           +--------------------------------+        |
+          │                               ▲                                     │
+          │                               │                                     │
+          │                               └──────────┐                          │
+          │                                          │                          │
+          │            +--------------------+        │                          │
+          └──────────▶| 4. setup_condition |        │                          │
+                       |  Set condition for |        │                          │
+                       |  recursion base.   |        │                          │
+                       +--------------------+        │                          │
+                                 │                   │                          ▼
+                                 │            +--------------------------------------+      
+                                 └──────────▶|       5. setup_recursive_layers      |
+                                              |        Configure recursive layers    |
+                                              |        and integrate proof.          |
+                                              +--------------------------------------+
+                                                    │                      ▲
+                                                    │                      │
+                                                    │                      │
+                                                    ▼                      │
+                                          +-----------------------------+  │
+                                          | 6. process_recursive_layer  |──┘
+                                          |  Handle recursion, verify,  |
+                                          |  and loop through steps.    |
+                                          +-----------------------------+
+                                                    │
+                                                    ▼
+                                          +-------------------------+
+                                          | 7. compile_and_process  |
+                                          |  Finalize circuit and   |
+                                          |  handle processing.     |
+                                          +-------------------------+
 ```
 
 ### Initial Setup
@@ -117,10 +122,10 @@ assert!(result.is_ok())
 
 ```
 
-We observe a total uncomressed proof size of 133440 bytes, regardless of number of steps in the chain.
+We observe a total uncomressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space.
 
 TODO
 - [ ] Compress the proof at the end
 - [ ] support keccak
 - [ ] add benches
-- [ ] better error handling with thiserr
+- [x]better error handling with thiserr
