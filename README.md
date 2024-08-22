@@ -75,7 +75,7 @@ Our approach is to insert the following gates into the circuit with the requisit
 ### Initial Setup
 - **Counter Initialization**: A counter gate is initialized to track the depth of recursion.
 - **Hash Initialization**: A virtual hash target gate is inserted and registered as a public input, marking the starting point of the hash chain.
-- **Keccak Hash Gate**: An updateable hash gate is added to enable hash updates as the recursion progresses.
+- **Hash Gate**: An updateable hash gate is added to enable hash updates as the recursion progresses.
 
 ### Recursive Hashing
 - **Verifier Data Setup**: Circuit common data is prepared, including configuration and partial witnesses required for recursion.
@@ -104,22 +104,24 @@ use plonky2::{
 };
 
 const D: usize = 2;
-type C = PoseidonGoldilocksConfig;
+type C = PoseidonGoldilocksConfig; // A config with poseidon as the hasher for FRI
 type F = <C as GenericConfig<D>>::F;
 
-let config = CircuitConfig::standard_recursion_config();
-let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-let (p, c) =
-    <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::hash_chain(
-        &mut builder,
-        10,
+let config = CircuitConfig::standard_recursion_config(); // a non-ZK config, commitments and proof may reveal input data
+let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
+
+// Prove
+let (proof, circuit_data) =
+    <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::build_hash_chain_circuit(
+        &mut circuit,
+        2, // number of steps in the hash chain
     )
     .unwrap();
 
-let result =
-    <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::verify(p, c);
-assert!(result.is_ok())
-
+// Verify
+let verification_result =
+    <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(proof, circuit_data);
+assert!(verification_result.is_ok());
 ```
 
 We observe a total uncomressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space.
