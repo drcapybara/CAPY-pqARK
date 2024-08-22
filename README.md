@@ -28,6 +28,15 @@ error[E0554]: `#![feature]` may not be used on the stable release channel
 
 Then please double check your toolchain. Otherwise, this repo should work out of the box.
 
+## Supported Hashes:
+
+The following hashes are supported in the recursive chain:
+
+| Hasher | Validation |
+|----------|----------|
+| Poseidon Hash    | [![Tests](https://github.com/drcapybara/hash-chain/actions/workflows/test_hash_chain.yml/badge.svg)](https://github.com/drcapybara/hash-chain/actions/workflows/test_hash_chain.yml)   |
+| Keccak    | [![Rust Nightly Tests](https://github.com/drcapybara/hash-chain/actions/workflows/test_hash_chain.yml/badge.svg)](https://github.com/drcapybara/hash-chain/actions/workflows/test_hash_chain.yml)  |
+
 # Strategy
 
 Our approach is to insert the following gates into the circuit with the requisite connections. It is not enough to create a circuit that simply connects each hash output the next input, the prover must argue the hash computation _and_ verify the preceeding hash in a single step, taking into account the recursive structure of the chain:
