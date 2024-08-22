@@ -1,6 +1,32 @@
 # Cyclic Hash Computation with Plonky2
 
-Have you ever been sitting behind your desk one evening and thought to yourself, "Gee whiz, I sure wish I could cryptographically prove in quantum-resistant zero knowledge that I computed a gigantic chain of hashes correctly"? Well _good news_ because this repo will fill that burning hole in your heart with a plonky2-based implementation of a recursive computation chain that proves a series of hashes a la IVC style and outputs a compressed proof of constant size, arguing the integrity of a potentially unlimited size computation.
+Have you ever been sitting behind your desk one evening and thought to yourself, "Gee whiz, I sure wish I could cryptographically prove in quantum-resistant zero knowledge that I computed a gigantic chain of hashes correctly"? Well _good news_ because this repo will fill that burning hole in your heart with a plonky2-based implementation of a prover and verifier pair for a recursive computation chain that argues the computational integrity of a series of hashes a la IVC style and outputs a compressed proof of constant size. The recursive nature of this circuit allows it to scale to potentially unlimited computation size.
+
+## Quick start:
+
+You can download the repo and run the main brain successfully with:
+```bash
+cargo test
+```
+
+Which is run in release mode by default. This repo requires the nightly toolchain. If you are seeing errors related to:
+
+```bash
+6 | #![feature(specialization)]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0554]: `#![feature]` may not be used on the stable release channel
+  |
+7 | #![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
+  |                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error[E0554]: `#![feature]` may not be used on the stable release channel
+  |
+7 | #![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
+  |                                             ^^^^^^^^^^^^^^^^^^
+```
+
+Then please double check your toolchain. Otherwise, this repo should work out of the box.
 
 This branch performs cyclic poseidon hashes, while [this branch](https://github.com/drcapybara/hash-chain/tree/feat/keccak) (currently broken), performs cyclic keccak hashes. 
 
@@ -75,19 +101,23 @@ use plonky2::{
     },
 };
 
-// setup the parameters for the circuit
 const D: usize = 2;
-type C = PoseidonGoldilocksConfig; // this is the hasher for FRI, not for the circuit
+type C = PoseidonGoldilocksConfig;
 type F = <C as GenericConfig<D>>::F;
 
-let config = CircuitConfig::standard_recursion_config(); // Non-ZK standard recursion config
-let mut hash_chain_circuit = CircuitBuilder::<F, D>::new(config.clone());
+let config = CircuitConfig::standard_recursion_config();
+let mut builder = CircuitBuilder::<F, D>::new(config.clone());
+let (p, c) =
+    <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::hash_chain(
+        &mut builder,
+        10,
+    )
+    .unwrap();
 
-<CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::hash_chain(
-    &mut hash_chain_circuit,
-    10,  // compute a hash chain of size 10
-)
-.unwrap();
+let result =
+    <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::verify(p, c);
+assert!(result.is_ok())
+
 ```
 
 We observe a total uncomressed proof size of 133440 bytes, regardless of number of steps in the chain.

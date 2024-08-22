@@ -1,0 +1,13 @@
+{
+    "git.openRepositoryInParentFolders": "never",
+    "git.confirmSync": false,
+    "editor.formatOnSave": true,
+    "workbench.startupEditor": "none",
+    "extensions.ignoreRecommendations": true,
+    "rust-analyzer.rustfmt.overrideCommand": [
+        "rustfmt",
+        "+nightly"
+    ],
+    "rust-analyzer.server.path": null,
+    "explorer.confirmDelete": false
+}

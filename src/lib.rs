@@ -24,6 +24,13 @@ use std::error::Error;
 pub const KECCAK256_R: usize = 1088;
 
 pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F>> {
+    fn verify(
+        proof: ProofWithPublicInputs<F, C, D>,
+        cyclic_circuit_data: CircuitData<F, C, D>,
+    ) -> Result<(), Box<dyn Error>>
+    where
+        F: RichField + Extendable<D>,
+        C: GenericConfig<D, F = F> + 'static;
     fn check_cyclic_proof_layer(
         condition: BoolTarget,
         inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
@@ -31,8 +38,19 @@ pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConf
         verifier_data_target: VerifierCircuitTarget,
         cyclic_circuit_data: &CircuitData<F, C, D>,
     ) -> Result<ProofWithPublicInputs<F, C, D>, Box<dyn Error>>;
-    fn hash_chain(&mut self, steps: usize) -> Result<(), Box<dyn std::error::Error>>;
+    fn hash_chain(
+        &mut self,
+        steps: usize,
+    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn std::error::Error>>;
     fn common_data_for_recursion() -> CommonCircuitData<F, D>;
+    fn process_recursive_layer(
+        condition: BoolTarget,
+        inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
+        common_data: CommonCircuitData<F, D>,
+        cyclic_circuit_data: CircuitData<F, C, D>,
+        verifier_data_target: VerifierCircuitTarget,
+        steps: usize,
+    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn Error>>;
 }
 
 impl<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F> + 'static>
@@ -40,7 +58,52 @@ impl<F: RichField + Extendable<D>, const D: usize, C: GenericConfig<D, F = F> + 
 where
     <C as GenericConfig<D>>::Hasher: AlgebraicHasher<F>,
 {
-    fn hash_chain(&mut self, steps: usize) -> Result<(), Box<dyn std::error::Error>> {
+    // Implementation strategy:
+    //
+    // +------------------+    +------------------+    +-----------------+
+    // | Initial Hash     |    | Current Hash     |    | Verifier Data   |
+    // | Target Gate      |──▶| Input Target     |──▶| Target Gate     |
+    // +------------------+    | (Updateable)     |    +-----------------+
+    //          │              +------------------+            │
+    //          │                   │    ▲                     │
+    //          │                   │    │                     │
+    //          │                   │    └───────┐             │
+    //          │                   │            │             │
+    //          │             +-----------+      │             │
+    //          └───────────▶| Condition |      │             │
+    //                        | Check Gate|      │             │
+    //                        +-----------+      │             │
+    //                                 │         ▼             ▼
+    //                                 │   +------------------------+
+    //                                 └─▶┤ Recursive Proof        |
+    //                                     | Integration & Loop     |
+    //                                     +------------------------+
+    //                                             │           ▲
+    //                                             │           │
+    //                                             │           │
+    //                                             ▼           │
+    //                                     +---------------+   │
+    //                                     | Step Counter  |───┘
+    //                                     | & Loop Check  |
+    //                                     +---------------+
+    //                                             │
+    //                                             ▼
+    //                                     +---------------+
+    //                                     | Finalize Hash |
+    //                                     | & Verification|
+    //                                     +---------------+
+    //
+    // Following this approach, we can build a properly constrained recursive hash chain
+    // circuit.
+    //
+    // Remark: This function is probably too big and could use some modularization.
+    // Because it is so heavily parameterized over generics, this becomes difficult
+    // when needing to pass around the builder between various functions.
+    fn hash_chain(
+        &mut self,
+        steps: usize,
+    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn std::error::Error>>
+    {
         let config = CircuitConfig::standard_recursion_config();
 
         // Setup the builder for the cyclic circuit. We will proceed to add the necessary
@@ -51,9 +114,8 @@ where
         // Set a counter to be incremented and track recursion depth
         let one = builder.one();
 
+        // Setup the initial hash target gate and register the initial hash as a public input.
         let initial_hash_target: HashOutTarget = builder.add_virtual_hash();
-
-        // Next register the initial hash as a public input.
         builder.register_public_inputs(&initial_hash_target.elements);
 
         // Insert an updateable hash gate into the circuit, so that we can
@@ -77,6 +139,9 @@ where
         // Set a condition flag to determine if we are in the base case or not.
         let condition = builder.add_virtual_bool_target_safe();
 
+        // Next, setup the gate connections for the recursion cycles. We need to
+        // 1. Verify a previous proof (if one exists) and
+        // 2. connect the output of the current layer to the next layer
         let inner_cyclic_proof_with_pub_inputs = builder.add_virtual_proof_with_pis(&common_data);
         let inner_cyclic_pub_inputs = &inner_cyclic_proof_with_pub_inputs.public_inputs;
         let inner_cyclic_initial_hash =
@@ -91,20 +156,103 @@ where
             builder.select_hash(condition, inner_cyclic_latest_hash, initial_hash_target);
         builder.connect_hashes(current_hash_in, actual_hash_in);
 
+        // Update the counter if we are still in the recursion
         let new_counter = builder.mul_add(condition.target, inner_cyclic_counter, one);
         builder.connect(counter, new_counter);
 
+        // Setup the verification of the proof if we are not
+        // in the base case
         builder.conditionally_verify_cyclic_proof_or_dummy::<C>(
             condition,
             &inner_cyclic_proof_with_pub_inputs,
             &common_data,
         )?;
 
+        // We now have all of the appropriate layers setup, so
+        // now lets compile the circuit.
         let cyclic_circuit_data = builder.build::<C>();
 
+        // Enter recursive loop
+        Self::process_recursive_layer(
+            condition,
+            inner_cyclic_proof_with_pub_inputs,
+            common_data,
+            cyclic_circuit_data,
+            verifier_data_target,
+            steps,
+        )
+    }
+
+    // Generates the common circuit data config for recursion, starting with the base case,
+    // then generating the configs for the recursive cases.
+    fn common_data_for_recursion() -> CommonCircuitData<F, D> {
+        let config = CircuitConfig::standard_recursion_config();
+        let builder = CircuitBuilder::<F, D>::new(config);
+        let data = builder.build::<C>();
+
+        let config = CircuitConfig::standard_recursion_config();
+        let mut builder = CircuitBuilder::<F, D>::new(config);
+        let proof = builder.add_virtual_proof_with_pis(&data.common);
+        let verifier_data =
+            builder.add_virtual_verifier_data(data.common.config.fri_config.cap_height);
+        builder.verify_proof::<C>(&proof, &verifier_data, &data.common);
+        let data = builder.build::<C>();
+
+        let config = CircuitConfig::standard_recursion_config();
+        let mut builder = CircuitBuilder::<F, D>::new(config);
+        let proof = builder.add_virtual_proof_with_pis(&data.common);
+        let verifier_data =
+            builder.add_virtual_verifier_data(data.common.config.fri_config.cap_height);
+        builder.verify_proof::<C>(&proof, &verifier_data, &data.common);
+
+        // Im not entiirely sure why we do this, but my best guess is that FRI requires AIR traces that are powers of 2.
+        // So this step ensures that the builder always has a gate count that is a power of 2.
+        while builder.num_gates() < 1 << 12 {
+            builder.add_gate(NoopGate, vec![]);
+        }
+        builder.build::<C>().common
+    }
+
+    // This function is used in the recursive layers to verify the proofs and set
+    // set the inputs.
+    fn check_cyclic_proof_layer(
+        condition: BoolTarget,
+        inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
+        proof: ProofWithPublicInputs<F, C, D>,
+        verifier_data_target: VerifierCircuitTarget,
+        cyclic_circuit_data: &CircuitData<F, C, D>,
+    ) -> Result<ProofWithPublicInputs<F, C, D>, Box<dyn Error>> {
         let mut pw = PartialWitness::new();
-        let initial_hash = [F::ZERO, F::ONE, F::TWO, F::from_canonical_usize(3)];
+        pw.set_bool_target(condition, true);
+        pw.set_proof_with_pis_target(&inner_cyclic_proof_with_pub_inputs, &proof);
+        pw.set_verifier_data_target(&verifier_data_target, &cyclic_circuit_data.verifier_only);
+        let proof = cyclic_circuit_data.prove(pw)?;
+        check_cyclic_proof_verifier_data(
+            &proof,
+            &cyclic_circuit_data.verifier_only,
+            &cyclic_circuit_data.common,
+        )?;
+        Ok(proof)
+    }
+
+    // Verify the previous layer, hash in the current layer, and prove
+    fn process_recursive_layer(
+        condition: BoolTarget,
+        inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
+        common_data: CommonCircuitData<F, D>,
+        cyclic_circuit_data: CircuitData<F, C, D>,
+        verifier_data_target: VerifierCircuitTarget,
+        steps: usize,
+    ) -> Result<(ProofWithPublicInputs<F, C, D>, CircuitData<F, C, D>), Box<dyn Error>> {
+        // Setup the partial witness for the proof, and set the
+        // initial public input wires with an array of field elements set to
+        // the empty hash
+        let mut pw = PartialWitness::new();
+        let initial_hash = [];
         let initial_hash_pub_inputs = initial_hash.into_iter().enumerate().collect();
+
+        // Set the condition wire to false because we are not in the recursive case
+        // initially
         pw.set_bool_target(condition, false);
         pw.set_proof_with_pis_target::<C, D>(
             &inner_cyclic_proof_with_pub_inputs,
@@ -114,6 +262,8 @@ where
                 initial_hash_pub_inputs,
             ),
         );
+
+        // Setup the expected data for the verifier
         pw.set_verifier_data_target(&verifier_data_target, &cyclic_circuit_data.verifier_only);
         let proof = cyclic_circuit_data.prove(pw)?;
         check_cyclic_proof_verifier_data(
@@ -144,74 +294,44 @@ where
             )?;
         }
 
+        Ok((proof, cyclic_circuit_data))
+    }
+
+    // Verify a proof given a circuit. This step is carried out by
+    // a verifying party. This circuit is not currently configured
+    // for zero-knowledge and should not be considered private.
+    fn verify(
+        proof: ProofWithPublicInputs<F, C, D>,
+        cyclic_circuit_data: CircuitData<F, C, D>,
+    ) -> Result<(), Box<dyn Error>> {
         // Use the given hash permutation from plonky2 to verify
         // that the repeated hash is computed correctly.
         let initial_hash = &proof.public_inputs[..4];
         let hash = &proof.public_inputs[4..8];
         let counter = proof.public_inputs[8];
+
+        // The verifier would not do this in real life,
+        // verification of the proof is sufficient to be
+        // convinced with high probablity that the proof
+        // is correct, this is merely done to validate
+        // the circuit output.
         let expected_hash: [F; 4] = iterate_hash(
             initial_hash.try_into().unwrap(),
             counter.to_canonical_u64() as usize,
         );
         assert_eq!(hash, expected_hash);
+
+        // Check the size of the proof; this number should remain
+        // the same regardless of the number of steps in the
+        // recursive circuit.
         let proof_bytes = proof.to_bytes();
         println!("Total Proof length: {} bytes", proof_bytes.len());
         Ok(cyclic_circuit_data.verify(proof)?)
     }
-
-    // Generates the common circuit data config for recursion, starting with the base case,
-    // the generating the configs for the recursive cases.
-    fn common_data_for_recursion() -> CommonCircuitData<F, D>
-    where
-        C::Hasher: AlgebraicHasher<F>,
-    {
-        let config = CircuitConfig::standard_recursion_config();
-        let builder = CircuitBuilder::<F, D>::new(config);
-        let data = builder.build::<C>();
-
-        let config = CircuitConfig::standard_recursion_config();
-        let mut builder = CircuitBuilder::<F, D>::new(config);
-        let proof = builder.add_virtual_proof_with_pis(&data.common);
-        let verifier_data =
-            builder.add_virtual_verifier_data(data.common.config.fri_config.cap_height);
-        builder.verify_proof::<C>(&proof, &verifier_data, &data.common);
-        let data = builder.build::<C>();
-
-        let config = CircuitConfig::standard_recursion_config();
-        let mut builder = CircuitBuilder::<F, D>::new(config);
-        let proof = builder.add_virtual_proof_with_pis(&data.common);
-        let verifier_data =
-            builder.add_virtual_verifier_data(data.common.config.fri_config.cap_height);
-        builder.verify_proof::<C>(&proof, &verifier_data, &data.common);
-
-        // Im not entiirely sure why we do this, but my best guess is that FRI requires AIR traces that are powers of 2
-        while builder.num_gates() < 1 << ((12 - 1) + 1) {
-            builder.add_gate(NoopGate, vec![]);
-        }
-        builder.build::<C>().common
-    }
-
-    fn check_cyclic_proof_layer(
-        condition: BoolTarget,
-        inner_cyclic_proof_with_pub_inputs: ProofWithPublicInputsTarget<D>,
-        proof: ProofWithPublicInputs<F, C, D>,
-        verifier_data_target: VerifierCircuitTarget,
-        cyclic_circuit_data: &CircuitData<F, C, D>,
-    ) -> Result<ProofWithPublicInputs<F, C, D>, Box<dyn Error>> {
-        let mut pw = PartialWitness::new();
-        pw.set_bool_target(condition, true);
-        pw.set_proof_with_pis_target(&inner_cyclic_proof_with_pub_inputs, &proof);
-        pw.set_verifier_data_target(&verifier_data_target, &cyclic_circuit_data.verifier_only);
-        let proof = cyclic_circuit_data.prove(pw)?;
-        check_cyclic_proof_verifier_data(
-            &proof,
-            &cyclic_circuit_data.verifier_only,
-            &cyclic_circuit_data.common,
-        )?;
-        Ok(proof)
-    }
 }
 
+// The Poseidon hash function used for validation only, it is not constrained into
+// the circuit built by the prover.
 fn iterate_hash<F: RichField>(initial_state: [F; 4], n: usize) -> [F; 4] {
     let mut current = initial_state;
     for _ in 0..n {
@@ -241,10 +361,15 @@ mod tests {
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config.clone());
-        let _ =
+        let (p, c) =
             <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::hash_chain(
                 &mut builder,
                 10,
-            );
+            )
+            .unwrap();
+
+        let result =
+            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::verify(p, c);
+        assert!(result.is_ok())
     }
 }
