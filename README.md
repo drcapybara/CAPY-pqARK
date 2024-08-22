@@ -123,3 +123,4 @@ TODO
 - [ ] Compress the proof at the end
 - [ ] support keccak
 - [ ] add benches
+- [ ] better error handling with thiserr
