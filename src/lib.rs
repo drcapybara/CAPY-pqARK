@@ -4,7 +4,7 @@ use plonky2::{
     hash::{
         hash_types::{HashOutTarget, RichField},
         hashing::hash_n_to_hash_no_pad,
-        poseidon::{PoseidonHash, PoseidonPermutation},
+        poseidon::PoseidonPermutation,
     },
     iop::{
         target::{BoolTarget, Target},
@@ -20,6 +20,7 @@ use plonky2::{
         cyclic_recursion::check_cyclic_proof_verifier_data, dummy_circuit::cyclic_base_proof,
     },
 };
+use plonky2_crypto::hash::{keccak256::CircuitBuilderHashKeccak, CircuitBuilderHash};
 use std::array::TryFromSliceError;
 pub const KECCAK256_R: usize = 1088;
 
@@ -201,10 +202,13 @@ where
         // Insert an updateable hash gate into the circuit, so that we can
         // update it as we recurse.
         let current_hash_in: HashOutTarget = builder.add_virtual_hash();
-        let current_hash_out: HashOutTarget =
-            builder.hash_n_to_hash_no_pad::<PoseidonHash>(current_hash_in.elements.to_vec());
 
-        builder.register_public_inputs(&current_hash_out.elements);
+        let keccak_in = builder.add_virtual_hash_input_target(1, KECCAK256_R);
+        let current_hash_out = builder.hash_keccak256(&keccak_in);
+
+        let targets: Vec<Target> = current_hash_out.limbs.iter().map(|t| t.0).collect();
+
+        builder.register_public_inputs(&targets);
         let counter = builder.add_virtual_public_input();
 
         // Get the `CircuitCommonData` for this circuit, which defines the configuration
@@ -231,9 +235,11 @@ where
                 counter,
             )?;
 
-        // We now have all of the appropriate layers setup, so
-        // now lets compile the circuit.
+        // Currently we are failing to build the circuit here, and I suspect this is because
+        // we have a missing wire connecction or constraint somewhere.
+        dbg!("preparing to build circuit...");
         let cyclic_circuit_data = builder.build::<C>();
+        dbg!("successfully built circuit...");
 
         // Enter recursive loop
         Self::process_recursive_layer(
@@ -270,6 +276,13 @@ where
         builder.connect_hashes(current_hash_in, actual_hash_in);
         let new_counter = builder.mul_add(condition.target, inner_cyclic_counter, one);
         builder.connect(counter, new_counter);
+
+        // If we dont run this line, then the circuit builds but
+        // fails to verify succesfully. Im not convinced we are
+        // setting up subsequent keccak hashes successfully, we
+        // are setting the input block size to the the keccak
+        // rate of 1088 but this might not be a valid choice for
+        // subsequent hashes.
         builder.conditionally_verify_cyclic_proof_or_dummy::<C>(
             condition,
             &inner_cyclic_proof_with_pub_inputs,
