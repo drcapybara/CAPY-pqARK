@@ -460,7 +460,7 @@ mod tests {
             GoldilocksField,
             2,
             C,
-        >>::build_hash_chain_circuit(&mut circuit, 10)
+        >>::build_hash_chain_circuit(&mut circuit, 2)
         .unwrap();
 
         let result =
