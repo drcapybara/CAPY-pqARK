@@ -476,6 +476,7 @@ mod tests {
         >>::build_hash_chain_circuit(&mut circuit, 2)
         .unwrap();
 
+        let num_bytes = proof.to_bytes().len();
         let result =
             <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(
                 proof,
