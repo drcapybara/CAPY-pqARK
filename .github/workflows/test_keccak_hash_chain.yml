@@ -3,11 +3,9 @@ name: Rust Nightly Tests
 on:
   push:
     branches:
-      - main
       - feat/keccak
   pull_request:
     branches:
-      - main
       - feat/keccak
 
 jobs:

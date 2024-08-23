@@ -456,15 +456,15 @@ mod tests {
 
         let config = CircuitConfig::standard_recursion_config();
         let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
-        let (proof, circuit_map) = <CircuitBuilder<GoldilocksField, 2> as HashChain<
+        let (proof, circuit_map) = <CircuitBuilder<GoldilocksField, D> as HashChain<
             GoldilocksField,
-            2,
+            D,
             C,
         >>::build_hash_chain_circuit(&mut circuit, 2)
         .unwrap();
 
         let result =
-            <CircuitBuilder<GoldilocksField, 2> as HashChain<GoldilocksField, 2, C>>::verify(
+            <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(
                 proof,
                 circuit_map,
             );
