@@ -147,5 +147,6 @@ This project makes use of the following open-source libraries:
 TODO
 - [ ] Compress the proof at the end
 - [ ] support keccak
-- [ ] add benches
+- [x] add benches
 - [x] better error handling with thiserr
+- [ ] better modularization and cleaner types
