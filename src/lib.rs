@@ -72,7 +72,7 @@ pub trait HashChain<F: RichField + Extendable<D>, const D: usize, C: GenericConf
 
     fn verify(
         proof: Proof<F, C, D>,
-        cyclic_circuit_data: CircuitMap<F, C, D>,
+        cyclic_circuit_data: &CircuitMap<F, C, D>,
     ) -> Result<(), HashChainError>;
 
     fn check_cyclic_proof_layer(
@@ -397,7 +397,7 @@ where
     // for zero-knowledge and should not be considered private.
     fn verify(
         proof: ProofWithPublicInputs<F, C, D>,
-        cyclic_circuit_data: CircuitData<F, C, D>,
+        cyclic_circuit_data: &CircuitData<F, C, D>,
     ) -> Result<(), HashChainError> {
         // Use the given hash permutation from plonky2 to verify
         // that the repeated hash is computed correctly.
@@ -466,7 +466,7 @@ mod tests {
         let result =
             <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(
                 proof,
-                circuit_map,
+                &circuit_map,
             );
         assert!(result.is_ok())
     }
