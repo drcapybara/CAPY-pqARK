@@ -30,12 +30,14 @@ Then please double check your toolchain. Otherwise, this repo should work out of
 
 ## Supported Hashes:
 
-The following hashes are supported in the recursive chain:
+The following hashes are integrated into the recursive chain:
 
 | Hasher | Validation |
 |----------|----------|
 | Poseidon Hash    | [![Test Poseidon Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml/badge.svg)](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml) |
 | Keccak    | [![Test Keccak Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml/badge.svg?branch=feat%2Fkeccak)](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml) |
+
+A failing test indicates that the circuit is failing to build, and thus work remains to introduce full support for the given hasher
 
 # Strategy
 
