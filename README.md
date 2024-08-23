@@ -45,12 +45,14 @@ To quickly benchmark prover and verifer performance, as well as examine details 
 ```
 ## Supported Hashes:
 
-The following hashes are supported in the recursive chain:
+The following hashes are available in the recursive chain:
 
 | Hasher | Validation |
 |----------|----------|
 | Poseidon Hash    | [![Test Poseidon Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml/badge.svg?branch=main)](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml) |
 | Keccak    | [![Test Keccak Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml/badge.svg?branch=feat%2Fkeccak)](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml) |
+
+The keccak chain fails to build successfully at current, work is ongoing to fix this eventually.
 
 # Strategy
 
