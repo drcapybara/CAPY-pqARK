@@ -17,7 +17,7 @@ fn hash_chain_proving_benchmark(c: &mut Criterion) {
     let config = CircuitConfig::standard_recursion_config();
 
     // Power of two recursive step sizes
-    let step_sizes = [2 /*, 4, 8, 16, 32, 64 */];
+    let step_sizes = [2, 4, 8, 16, 32, 64];
 
     let mut group = c.benchmark_group("HashChain Prover");
 
@@ -51,7 +51,7 @@ fn hash_chain_verification_benchmark(c: &mut Criterion) {
     group.sample_size(10);
 
     // Power of two recursive step sizes
-    let step_sizes = [2 /*, 4, 8, 16, 32, 64 */];
+    let step_sizes = [2, 4, 8, 16, 32, 64];
 
     for &steps in &step_sizes {
         group.bench_function(&format!("hash_chain_verify_{}_steps", steps), |b| {

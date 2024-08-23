@@ -28,16 +28,29 @@ error[E0554]: `#![feature]` may not be used on the stable release channel
 
 Then please double check your toolchain. Otherwise, this repo should work out of the box.
 
+You can also run:
+
+```bash
+RUSTFLAGS="-Ctarget-cpu=native" cargo run --release --example circuit_telemetry -- -vv --steps 20
+```
+
+To quickly benchmark prover and verifer performance, as well as examine details about the chain over a given number of steps:
+
+```text
+[2024-08-23T08:01:38Z INFO  hash_chain] Number of gates in circuit: 112960
+[2024-08-23T08:01:46Z INFO  hash_chain] Total Proof length: 133440 bytes
+[2024-08-23T08:01:46Z INFO  circuit_telemetry] Proof time: 9.733192095s
+[2024-08-23T08:01:46Z INFO  circuit_telemetry] Verification time: 4.142599ms
+[2024-08-23T08:01:46Z INFO  circuit_telemetry] Circuit depth: 20
+```
 ## Supported Hashes:
 
-The following hashes are integrated into the recursive chain:
+The following hashes are supported in the recursive chain:
 
 | Hasher | Validation |
 |----------|----------|
 | Poseidon Hash    | [![Test Poseidon Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml/badge.svg)](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml) |
 | Keccak    | [![Test Keccak Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml/badge.svg?branch=feat%2Fkeccak)](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml) |
-
-A failing test indicates that the circuit is failing to build, and thus work remains to introduce full support for the given hasher
 
 # Strategy
 
@@ -134,7 +147,26 @@ let verification_result =
 assert!(verification_result.is_ok());
 ```
 
-We observe a total uncompressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space. Think fully-succint blockchains, in which light clients can verify the entire state of the chain trustlessly by verifying a small and simple proof.
+We observe a total uncompressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space. Think fully-succinct blockchains, in which light clients can verify the entire state of the chain trustlessly by verifying a small and simple proof in a blisteringly fast amount of time.
+
+## Benches
+
+This crate uses criterion for formal benchmarks. Bench prover and verifier performance with:
+
+```bash
+cargo bench
+```
+Here are some prelimnary performance metrics observed thus far:
+
+| Circuit depth (steps) | Prover Runtime (s) | Verifier Runtime (ms)|
+|-----------------------|--------------------|----------------------|
+| 2                     | 3.3680 s           | 3.1013 ms            |
+| 4                     | 4.2126 s           | 3.1220 ms            |
+| 8                     | 5.7366 s           | 3.0812 ms            |
+| 16                    | 8.8146 s           | 3.1098 ms            |
+| 32                    | 14.957 s           | 3.0865 ms            |
+| 64                    | 27.294 s           | 3.1625 ms            |
+
 
 ## Acknowledgments
 
@@ -145,8 +177,8 @@ This project makes use of the following open-source libraries:
 - **[plonky2_crypto](https://github.com/JumpCrypto/plonky2-crypto)** by Jump Crypto - This component extends the capabilities of plonky2 with additional cryptographic functionalities, sourced from the `patch-plonky2` branch. This crate contains keccak and sha256 hasher gadgets that we use in our recursive circuit.
 
 TODO
-- [ ] Compress the proof at the end
-- [ ] support keccak
 - [x] add benches
 - [x] better error handling with thiserr
-- [ ] better modularization and cleaner types
+- [ ] Compress the proof at the end
+- [ ] support keccak
+- [ ] add richer circuit telemetry

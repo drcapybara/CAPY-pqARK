@@ -1,3 +1,5 @@
+use env_logger::builder;
+use log::info;
 use plonky2::{
     field::extension::Extendable,
     gates::noop::NoopGate,
@@ -231,6 +233,10 @@ where
                 counter,
             )?;
 
+        info!(
+            "Number of gates in circuit: {}",
+            builder.num_gates() * steps
+        );
         // We now have all of the appropriate layers setup, so
         // now lets compile the circuit.
         let cyclic_circuit_data = builder.build::<C>();
@@ -305,6 +311,7 @@ where
         while builder.num_gates() < 1 << 12 {
             builder.add_gate(NoopGate, vec![]);
         }
+
         builder.build::<C>().common
     }
 
@@ -420,7 +427,7 @@ where
         // the same regardless of the number of steps in the
         // recursive circuit.
         let proof_bytes = proof.to_bytes();
-        println!("Total Proof length: {} bytes", proof_bytes.len());
+        info!("Total Proof length: {} bytes", proof_bytes.len());
         Ok(cyclic_circuit_data.verify(proof)?)
     }
 }
