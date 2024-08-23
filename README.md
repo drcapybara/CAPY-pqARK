@@ -49,7 +49,7 @@ The following hashes are supported in the recursive chain:
 
 | Hasher | Validation |
 |----------|----------|
-| Poseidon Hash    | [![Test Poseidon Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml/badge.svg)](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml) |
+| Poseidon Hash    | [![Test Poseidon Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml/badge.svg?branch=main)](https://github.com/drcapybara/hash-chain/actions/workflows/test_poseidon_hash_chain.yml) |
 | Keccak    | [![Test Keccak Hash](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml/badge.svg?branch=feat%2Fkeccak)](https://github.com/drcapybara/hash-chain/actions/workflows/test_keccak_hash_chain.yml) |
 
 # Strategy
