@@ -24,7 +24,7 @@ fn hash_chain_proving_benchmark(c: &mut Criterion) {
     // Configure the group
     group.sample_size(10);
     for &steps in &step_sizes {
-        group.bench_function(&format!("hash_chain_{}_steps", steps), |b| {
+        group.bench_function(format!("hash_chain_{}_steps", steps), |b| {
             b.iter(|| {
                 let mut circuit = black_box(CircuitBuilder::<F, D>::new(config.clone()));
                 let (_, _) = <CircuitBuilder<GoldilocksField, D> as HashChain<
@@ -54,7 +54,7 @@ fn hash_chain_verification_benchmark(c: &mut Criterion) {
     let step_sizes = [2, 4, 8, 16, 32, 64];
 
     for &steps in &step_sizes {
-        group.bench_function(&format!("hash_chain_verify_{}_steps", steps), |b| {
+        group.bench_function(format!("hash_chain_verify_{}_steps", steps), |b| {
             // Move the circuit and proof generation out of the iterated benchmark block
             let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
             let (proof, circuit_map) = <CircuitBuilder<GoldilocksField, D> as HashChain<
@@ -73,7 +73,8 @@ fn hash_chain_verification_benchmark(c: &mut Criterion) {
                         C,
                     >>::verify(proof.clone(), &circuit_map));
 
-                black_box(verification_result.unwrap());
+                verification_result.unwrap();
+                black_box(());
             });
         });
     }

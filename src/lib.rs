@@ -1,4 +1,3 @@
-use env_logger::builder;
 use log::info;
 use plonky2::{
     field::extension::Extendable,
