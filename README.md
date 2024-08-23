@@ -160,14 +160,14 @@ cargo bench
 ```
 Here are some prelimnary performance metrics observed thus far:
 
-| Circuit depth (steps) | Prover Runtime (s) | Verifier Runtime (ms)|
-|-----------------------|--------------------|----------------------|
-| 2                     | 3.3680 s           | 3.1013 ms            |
-| 4                     | 4.2126 s           | 3.1220 ms            |
-| 8                     | 5.7366 s           | 3.0812 ms            |
-| 16                    | 8.8146 s           | 3.1098 ms            |
-| 32                    | 14.957 s           | 3.0865 ms            |
-| 64                    | 27.294 s           | 3.1625 ms            |
+| Circuit depth (steps) | Prover Runtime (s) | Verifier Runtime (ms)| System RAM Used (mb)|
+|-----------------------|--------------------|----------------------|---------------------|
+| 2                     | 3.3680 s           | 3.1013 ms            | 375.692             |
+| 4                     | 4.2126 s           | 3.1220 ms            | 381.536             |
+| 8                     | 5.7366 s           | 3.0812 ms            | 392.716             |
+| 16                    | 8.8146 s           | 3.1098 ms            | 405.516             |
+| 32                    | 14.957 s           | 3.0865 ms            | 417.704             |
+| 64                    | 27.294 s           | 3.1625 ms            | 436.424             |
 
 
 ## Acknowledgments
