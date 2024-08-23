@@ -20,6 +20,7 @@ use plonky2::{
     recursion::{
         cyclic_recursion::check_cyclic_proof_verifier_data, dummy_circuit::cyclic_base_proof,
     },
+    util::serialization::DefaultGateSerializer,
 };
 use std::array::TryFromSliceError;
 pub const KECCAK256_R: usize = 1088;
@@ -216,6 +217,21 @@ where
         // Define the verifier data target for the circuit.
         let verifier_data_target = builder.add_verifier_data_public_inputs();
         common_data.num_public_inputs = builder.num_public_inputs();
+        let gate_serializer = DefaultGateSerializer;
+        let common_data_bytes = common_data
+            .to_bytes(&gate_serializer)
+            .map_err(|_| anyhow::Error::msg("CommonCircuitData serialization failed."))?;
+        info!(
+            "Common circuit data length: {} bytes",
+            common_data_bytes.len()
+        );
+
+        info!(
+            "Initial {} degree {} = 2^{}",
+            "proof",
+            common_data.degree(),
+            common_data.degree_bits()
+        );
 
         // Set a condition flag to determine if we are in the base case or not.
         let condition = builder.add_virtual_bool_target_safe();
@@ -280,6 +296,7 @@ where
             &inner_cyclic_proof_with_pub_inputs,
             &common_data,
         )?;
+        builder.print_gate_counts(0);
         Ok(inner_cyclic_proof_with_pub_inputs)
     }
 
@@ -362,6 +379,13 @@ where
                 &cyclic_circuit_data.verifier_only,
                 initial_hash_pub_inputs,
             ),
+        );
+
+        info!(
+            "Initial {} degree {} = 2^{}",
+            "proof",
+            common_data.degree(),
+            common_data.degree_bits()
         );
 
         // Setup the expected data for the verifier
