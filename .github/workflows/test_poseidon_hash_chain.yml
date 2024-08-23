@@ -1,4 +1,4 @@
-name: Rust Nightly Tests
+name: Test Poseidon Hash
 
 on:
   push:

@@ -1,4 +1,4 @@
-name: Rust Nightly Tests
+name: Test Keccak Hash
 
 on:
   push:
