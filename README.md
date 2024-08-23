@@ -42,22 +42,20 @@ The following hashes are supported in the recursive chain:
 Our approach is to insert the following gates into the circuit with the requisite connections. It is not enough to create a circuit that simply connects each hash output the next input, the prover must argue the hash computation _and_ verify the preceeding hash in a single step, taking into account the recursive structure of the chain:
 
 ```text
-+--------------------------------+    +--------------------------------+    +------------------------------+
-| 1. initialize_circuit_builder  |    | 2. setup_hashes                |    | 3. common_data_for_recursion |
-|    Set up the circuit builder  |──▶| Configure initial and current  |──▶| Set up data for recursion    |
-|    and configuration.          |    | hash targets and register      |    | and verifier data inputs.    |
-+--------------------------------+    | them as public inputs.         |    +------------------------------+
-          |                           +--------------------------------+        |
-          │                               ▲                                     │
-          │                               │                                     │
-          │                               └──────────┐                          │
-          │                                          │                          │
-          │            +--------------------+        │                          │
-          └──────────▶| 4. setup_condition |        │                          │
-                       |  Set condition for |        │                          │
-                       |  recursion base.   |        │                          │
-                       +--------------------+        │                          │
-                                 │                   │                          ▼
++--------------------------------+    +-------------------------+    +------------------------------+
+| 1. initialize_circuit_builder  |    | 2. setup_hashes         |    | 3. common_data_for_recursion |
+|    Set up the circuit builder  |──▶| Configure initial       |──▶| Set up data for recursion    |
+|     and configuration.         |    |  and current hash       |    | and verifier data inputs.    |
++--------------------------------+    | targets and register    |    +------------------------------+                            
+          |                           | them as public inputs.  |              |
+          |                           +-------------------------+              |
+          │                                                                    │
+          │            +--------------------+                                  │
+          └──────────▶| 4. setup_condition |                                  │
+                       |  Set condition for |                                  │
+                       |  recursion base.   |                                  │
+                       +--------------------+                                  │
+                                 │                                             ▼
                                  │            +--------------------------------------+      
                                  └──────────▶|       5. setup_recursive_layers      |
                                               |        Configure recursive layers    |
@@ -116,7 +114,8 @@ const D: usize = 2;
 type C = PoseidonGoldilocksConfig; // A config with poseidon as the hasher for FRI
 type F = <C as GenericConfig<D>>::F;
 
-let config = CircuitConfig::standard_recursion_config(); // a non-ZK config, commitments and proof may reveal input data
+// a non-ZK config, commitments and proof may reveal input data
+let config = CircuitConfig::standard_recursion_config(); 
 let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
 
 // Prove
@@ -133,7 +132,15 @@ let verification_result =
 assert!(verification_result.is_ok());
 ```
 
-We observe a total uncomressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space.
+We observe a total uncompressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space. Think fully-succint blockchains, in which light clients can verify the entire state of the chain trustlessly by verifying a small and simple proof.
+
+## Acknowledgments
+
+This project makes use of the following open-source libraries:
+
+- **[plonky2](https://github.com/drcapybara/plonky2)** by Polygon Labs - Although poorly documented and cumbersome to get up and running, Polygon keeps the hits coming with this library by presenting a very compelling framework for blending the expresivity of PLONK with the killer performance of ZK-STARKS. 
+
+- **[plonky2_crypto](https://github.com/JumpCrypto/plonky2-crypto)** by Jump Crypto - This component extends the capabilities of plonky2 with additional cryptographic functionalities, sourced from the `patch-plonky2` branch. This crate contains keccak and sha256 hasher gadgets that we use in our recursive circuit.
 
 TODO
 - [ ] Compress the proof at the end

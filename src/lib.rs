@@ -103,22 +103,20 @@ where
     /// Implementation strategy:
     ///
     /// ```text
-    /// +--------------------------------+    +--------------------------------+    +------------------------------+
-    /// | 1. initialize_circuit_builder  |    | 2. setup_hashes                |    | 3. common_data_for_recursion |
-    /// |    Set up the circuit builder  |──▶| Configure initial and current  |──▶| Set up data for recursion    |
-    /// |    and configuration.          |    | hash targets and register      |    | and verifier data inputs.    |
-    /// +--------------------------------+    | them as public inputs.         |    +------------------------------+
-    ///           |                           +--------------------------------+        |
-    ///           │                               ▲                                     │
-    ///           │                               │                                     │
-    ///           │                               └──────────┐                          │
-    ///           │                                          │                          │
-    ///           │            +--------------------+        │                          │
-    ///           └─────────▶ | 4. setup_condition |        │                          │
-    ///                        |  Set condition for |        │                          │
-    ///                        |  recursion base.   |        │                          │
-    ///                        +--------------------+        │                          │
-    ///                                  │                   │                          ▼
+    /// +--------------------------------+    +-------------------------+    +------------------------------+
+    /// | 1. initialize_circuit_builder  |    | 2. setup_hashes         |    | 3. common_data_for_recursion |
+    /// |    Set up the circuit builder  |──▶| Configure initial       |──▶| Set up data for recursion    |
+    /// |     and configuration.         |    |  and current hash       |    | and verifier data inputs.    |
+    /// +--------------------------------+    | targets and register    |    +------------------------------+                            
+    ///           |                           | them as public inputs.  |              |
+    ///           |                           +-------------------------+              |
+    ///           │                                                                    │
+    ///           │            +--------------------+                                  │
+    ///           └──────────▶| 4. setup_condition |                                  │
+    ///                        |  Set condition for |                                  │
+    ///                        |  recursion base.   |                                  │
+    ///                        +--------------------+                                  │
+    ///                                  │                                             ▼
     ///                                  │            +--------------------------------------+      
     ///                                  └──────────▶|       5. setup_recursive_layers      |
     ///                                               |        Configure recursive layers    |
@@ -141,6 +139,7 @@ where
     ///                                           |  handle processing.     |
     ///                                           +-------------------------+
     /// ```
+    ///
     /// Following this approach, we can build a properly constrained recursive hash chain
     /// circuit. (At least thats the plan!)
     ///
@@ -160,7 +159,8 @@ where
     /// type C = PoseidonGoldilocksConfig; // A config with poseidon as the hasher for FRI
     /// type F = <C as GenericConfig<D>>::F;
     ///
-    /// let config = CircuitConfig::standard_recursion_config(); // a non-ZK config, commitments and proof may reveal input data
+    /// // a non-ZK config, commitments and proof may reveal input data
+    /// let config = CircuitConfig::standard_recursion_config();
     /// let mut circuit = CircuitBuilder::<F, D>::new(config.clone());
     ///
     /// // Prove
