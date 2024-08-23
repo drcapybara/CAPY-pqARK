@@ -174,7 +174,7 @@ where
     ///
     /// // Verify
     /// let verification_result =
-    ///     <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(proof, circuit_data);
+    ///     <CircuitBuilder<GoldilocksField, D> as HashChain<GoldilocksField, D, C>>::verify(proof, &circuit_data);
     /// assert!(verification_result.is_ok());
     /// ```
     ///
