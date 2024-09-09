@@ -95,7 +95,9 @@ Our approach is to insert the following gates into the circuit with the requisit
                                           |  handle processing.     |
                                           +-------------------------+
 ```
-You can also view a rough sketch of a circuit diagram of the entire setup ![here](https://github.com/user-attachments/assets/f64e6c2a-f85b-4ec0-a3bd-1e210ec12dd4)
+You can also view a rough sketch of a circuit diagram of the entire setup:
+![](https://github.com/user-attachments/assets/0d7e9a9a-a1c3-4b5e-95fd-1dbe812d1076)
+
 
 ### Initial Setup
 - **Counter Initialization**: A counter gate is initialized to track the depth of recursion.
