@@ -1,6 +1,6 @@
 # Cyclic Hash Computation with Plonky2
 
-Have you ever been sitting behind your desk one evening and thought to yourself, "Gee whiz, I sure wish I could cryptographically prove in quantum-resistant zero knowledge that I computed a gigantic chain of hashes correctly"? Well _good news_ because this repo will fill that burning hole in your heart with a plonky2-based implementation of a prover and verifier pair for a recursive computation chain that argues the computational integrity of a series of hashes a la IVC style and outputs a compressed proof of constant size. The recursive nature of this circuit allows it to scale to potentially unlimited computation size.
+Have you ever thought to yourself, "Gee, I sure wish I could cryptographically prove in quantum-resistant zero knowledge that I computed a gigantic chain of hashes correctly"? Well _good news_ because this repo will fill that burning hole in your heart with a plonky2-based implementation of a prover/verifier pair for a recursive computation chain that argues the computational integrity of a series of hashes a la IVC style and outputs a compressed proof of constant size. The recursive nature of this circuit gives desireable scaling characteristics, and this work presents and effort to better understand the unique design challenges presented when working with low-level circuitry.
 
 ## Quick start:
 
@@ -152,7 +152,7 @@ let verification_result =
 assert!(verification_result.is_ok());
 ```
 
-We observe a total uncompressed proof size of 133440 bytes, regardless of number of steps in the chain. This is, in my humble opinion, totally awesome and cool, because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space. Think fully-succinct blockchains, in which light clients can verify the entire state of the chain trustlessly by verifying a small and simple proof in a blisteringly fast amount of time.
+We observe a total uncompressed proof size of 133440 bytes, regardless of number of steps in the chain. We find this is very nice because this number stays the same no matter how many hashes we compute. In theory, recursively verifiable proofs of this nature can compress extremely large computations into a very small space. Think fully-succinct blockchains, in which light clients can verify the entire state of the chain trustlessly by verifying a small and simple proof in trivial amounts of time.
 
 ## Benches
 
@@ -177,11 +177,20 @@ Here are some prelimnary performance metrics observed thus far:
 
 This project makes use of the following open-source libraries:
 
-- **[plonky2](https://github.com/drcapybara/plonky2)** by Polygon Labs - Although poorly documented and cumbersome to get up and running, Polygon keeps the hits coming with this library by presenting a very compelling framework for blending the expresivity of PLONK with the killer performance of ZK-STARKS. 
+Recursive STARK Wiring framework:
+- **[plonky2](https://github.com/drcapybara/plonky2)** by Polygon Labs 
 
-- **[plonky2_crypto](https://github.com/JumpCrypto/plonky2-crypto)** by Jump Crypto - This component extends the capabilities of plonky2 with additional cryptographic functionalities, sourced from the `patch-plonky2` branch. This crate contains keccak and sha256 hasher gadgets that we use in our recursive circuit.
 
-TODO
+Hash Circuits:
+- **[plonky2_crypto](https://github.com/JumpCrypto/plonky2-crypto)** by Jump Crypto 
+
+## Readings
+- [Plonky2 whitepaper](https://github.com/0xPolygonZero/plonky2/blob/main/plonky2/plonky2.pdf)
+
+- The always excellent [Anatomy of a STARK](https://aszepieniec.github.io/stark-anatomy/):
+
+
+## TODO
 - [x] add benches
 - [x] better error handling with thiserr
 - [ ] Compress the proof at the end
