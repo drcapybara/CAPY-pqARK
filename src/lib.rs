@@ -435,7 +435,7 @@ where
         let hash = &proof.public_inputs[4..8];
         let counter = proof.public_inputs[8];
 
-        // The verifier would not do this in real life,
+        // The verifier would not do this.
         // verification of the proof is sufficient to be
         // convinced with high probablity that the proof
         // is correct, this is merely done to validate
@@ -455,8 +455,7 @@ where
     }
 }
 
-// The Poseidon hash function used for validation only, it is not constrained into
-// the circuit built by the prover.
+// Iterate a hash n number of times for validation purposes. 
 fn iterate_hash<F: RichField>(initial_state: [F; 4], n: usize) -> [F; 4] {
     let mut current = initial_state;
     for _ in 0..n {
